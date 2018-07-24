@@ -29,12 +29,11 @@ After enabled, in your Wordpress Dashboard go to Settings > CF CachePurger and f
 Everytime you edit or post a new content the cache will be cleared.
 
 # Which pages this plugin purges?
-This plugin tries to clear all related paths to avoid dummy caching.
-  This plugin purges:
-    -the post Slug URL (yoursite.com/the-post-name)
-    - the post Slug URL with and without WWW, with and without SSL (httpS/http) 
-    - your wordpress home URL (get_home_url())
-    - your wordpress home URL with ending slash (get_home_url()/)
+This plugin tries to clear all related paths to avoid dummy caching. This plugin purges:
+  - the post Slug URL (yoursite.com/the-post-name)
+  - the post Slug URL with and without WWW, with and without SSL (httpS/http) 
+  - your wordpress home URL (get_home_url())
+  - your wordpress home URL with ending slash (get_home_url()/)
 
 # How to debug?
 This plugin has a debug section under the Settings page where you can see a textarea box with some informations about what's happening.
