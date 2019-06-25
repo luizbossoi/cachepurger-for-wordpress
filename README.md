@@ -50,3 +50,10 @@ Yes, probably it's enough :)
 
 # Bugs, issues, questions
 If you have any question or issue related to this plugin, please fell free to contribute reporting it.
+
+# Docker - test it
+You can use docker-run.sh to start a Wordpress + MySQL container on your computer to test this plugin.
+Just remember - if you're planning to test the purge action, will be not able to do that because of localhost "domain".
+Server starts at : http://localhost:80000
+
+From: https://github.com/luizbossoi/cachepurger-for-wordpress
