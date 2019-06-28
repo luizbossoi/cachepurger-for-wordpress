@@ -7,15 +7,54 @@
    Author URI: http://luizbossoi.com.br
    */
 
-function purgeCache($path, $zone_id) {
+global $ccfw_db_version;
+global $ccfw_tablename_log;
+$ccfw_tablename_log = 'cf_cachepurger_log';
+$ccfw_db_version    = '1.0';
+
+
+function ccfw_install() {
+	global $wpdb;
+	global $ccfw_db_version;
+    global $ccfw_tablename_log;
+
+	$table_name = $wpdb->prefix . $ccfw_tablename_log;
+	
+	$charset_collate = $wpdb->get_charset_collate();
+
+	$sql = "CREATE TABLE $table_name (
+		      id mediumint(9) NOT NULL AUTO_INCREMENT,
+		      time datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+		      text text NOT NULL,
+		      PRIMARY KEY  (id)
+	       ) $charset_collate;";
+
+    require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+	dbDelta( $sql );
+    
+    update_option( "ccfw_db_version", $ccfw_db_version );
+}
+
+function ccfw_uninstall() {
+    global $wpdb;
+	global $ccfw_db_version;
+    global $ccfw_tablename_log;
+
+	$table_name = $wpdb->prefix . $ccfw_tablename_log;
+    $sql = "DROP TABLE IF EXISTS $table_name;";
+    $wpdb->query($sql);
+    delete_option("ccfw_db_version");
+}
+
+function ccfw_purgeCache($path, $zone_id) {
     $cf_check_allcache  = get_option('cf_check_allcache');
     if($cf_check_allcache=='true') {
         $data = array('purge_everything'=>true);
-        addLog('Paths: - entire cache -');  
+        ccfw_addLog('Paths: - entire cache -');  
     } else {
         $data   = array("files" => $path);
-        if(sizeof($path)<=0) { addLog('Nothing to clear'); return false; }
-        addLog('Paths: ' . implode(', ',$path));  
+        if(sizeof($path)<=0) { ccfw_addLog('Nothing to clear'); return false; }
+        ccfw_addLog('Paths: ' . implode(', ',$path));  
     } 
 
     $result = wp_remote_post("https://api.cloudflare.com/client/v4/zones/$zone_id/purge_cache", 
@@ -29,10 +68,10 @@ function purgeCache($path, $zone_id) {
     ));
 
     $arr_result = json_decode($result['body'], true);
-    if(isset($arr_result['success'])) addLog('Cache purged'); else addLog('ERROR: ' . print_r($arr_result['errors'], true));
+    if(isset($arr_result['success'])) ccfw_addLog('Cache purged'); else ccfw_addLog('ERROR: ' . print_r($arr_result['errors'], true));
 }
 
-function getZoneID($domain) {
+function ccfw_getZoneID($domain) {
     $result = wp_remote_get("https://api.cloudflare.com/client/v4/zones", 
            array(
                    'headers' => array(
@@ -55,21 +94,28 @@ function getZoneID($domain) {
 return false;
 }
 
-function human_filesize($bytes, $decimals = 2) {
-    $sz = 'BKMGTP';
-    $factor = floor((strlen($bytes) - 1) / 3);
-    return sprintf("%.{$decimals}f", $bytes / pow(1024, $factor)) . @$sz[$factor];
+function ccfw_addLog($message) {
+    global $wpdb;
+    global $ccfw_tablename_log;
+	$table_name = $wpdb->prefix . $ccfw_tablename_log;
+
+	$wpdb->insert( 
+		$table_name, 
+		array( 
+			'time' => current_time( 'mysql' ), 
+			'text' => $message, 
+		) 
+	);
 }
 
-function addLog($message) {
-    $plugin_path	= dirname ( __FILE__ );
-    if(file_exists($plugin_path . "/purge.log")==false) { fopen($plugin_path . "/purge.log", 'w') or die("Can't create logfile"); }
-    file_put_contents($plugin_path . "/purge.log", date('Y-m-d H:i:s') .  "\t" . $message . "\n", FILE_APPEND  );
-}
-
-function clearCache($post_id) {
+function ccfw_clearCache($post_id) {
     $purge_paths    = array();
     $post_url	    = rtrim(get_permalink($post_id),'/');
+    
+    // check post type to avoid calling twice
+    if(  ( wp_is_post_revision( $post_id) || wp_is_post_autosave( $post_id ) ) ) {
+       return false;
+    }
     
     // cloudflare settings
     $cf_key_value       = get_option('cf_key_value');
@@ -83,7 +129,6 @@ function clearCache($post_id) {
     
     $arr_url	= parse_url($post_url);
     $domain		= str_replace('www.','', $arr_url['host']);
-    $domain = 'traderlife.com.br';
 
     if($cf_check_homepage=='true' || $cf_check_allcache=='true') { array_push($purge_paths, get_site_url() . "/"); array_push($purge_paths, get_site_url()); }
     if($cf_check_postpage=='true' || $cf_check_allcache=='true') { array_push($purge_paths, $post_url); array_push($purge_paths, $post_url . "/"); }
@@ -99,63 +144,74 @@ function clearCache($post_id) {
     }
     
     if(strlen($cf_key_value)>0 && strlen($cf_email_value)>0) {
-        addLog("Post edited/added, need to purge cache...");
-        $zone_id = getZoneID($domain);
+        ccfw_addLog("Post edited/added, need to purge cache...");
+        $zone_id = ccfw_getZoneID($domain);
         if($zone_id==false) {
-            addLog("ERROR: Zone domain not found: $domain");
+            ccfw_addLog("ERROR: Zone domain not found: $domain");
         } else {
-            addLog("Zone ID $zone_id found, requesting purge... ");
+            ccfw_addLog("Zone ID $zone_id found, requesting purge... ");
             
-            if(purgeCache($purge_paths, $zone_id)) {
+            if(ccfw_purgeCache($purge_paths, $zone_id)) {
               // 
             }
         }
     }
     
-    addLog('--------------------------------------');
+    ccfw_addLog('------------------ end --------------------');
 }
 
-function cachepurger_register_settings() {
+function ccfw_cachepurger_register_settings() {
     // save cloudflare settings
-    add_option( 'cf_key_value', sanitize_text_field($_POST['cf_key_value']));
-    register_setting( 'cachepurger_options_group', 'cf_key_value' );
-    
-    add_option( 'cf_email_value', sanitize_text_field($_POST['cf_email_value']));
-    register_setting( 'cachepurger_options_group', 'cf_email_value' );
-    
-    // save caching settings
-    add_option( 'cf_check_homepage', sanitize_text_field($_POST['cf_check_homepage']));
-    register_setting( 'cachepurger_options_group', 'cf_check_homepage' );
+    if($_SERVER['REQUEST_METHOD']=='POST') {
+        
+        $cf_key_value       = isset($_POST['cf_key_value'])         ? sanitize_text_field($_POST['cf_key_value'])       : null;
+        $cf_email_value     = isset($_POST['cf_email_value'])       ? sanitize_text_field($_POST['cf_email_value'])     : null;
+        $cf_check_homepage  = isset($_POST['cf_check_homepage'])    ? sanitize_text_field($_POST['cf_check_homepage'])  : null;
+        $cf_check_postpage  = isset($_POST['cf_check_postpage'])    ? sanitize_text_field($_POST['cf_check_postpage'])  : null;
+        $cf_check_httphttps = isset($_POST['cf_check_httphttps'])   ? sanitize_text_field($_POST['cf_check_httphttps']) : null;
+        $cf_check_allcache  = isset($_POST['cf_check_allcache'])    ? sanitize_text_field($_POST['cf_check_allcache'])  : null;
+        
+        add_option( 'cf_key_value', $cf_key_value);
+        register_setting( 'cachepurger_options_group', 'cf_key_value' );
 
-    add_option( 'cf_check_postpage', sanitize_text_field($_POST['cf_check_postpage']));
-    register_setting( 'cachepurger_options_group', 'cf_check_postpage' );
+        add_option( 'cf_email_value', $cf_email_value);
+        register_setting( 'cachepurger_options_group', 'cf_email_value' );
 
-    add_option( 'cf_check_httphttps', sanitize_text_field($_POST['cf_check_httphttps']));
-    register_setting( 'cachepurger_options_group', 'cf_check_httphttps' );
+        // save caching settings
+        add_option( 'cf_check_homepage', $cf_check_homepage);
+        register_setting( 'cachepurger_options_group', 'cf_check_homepage' );
 
-    add_option( 'cf_check_allcache', sanitize_text_field($_POST['cf_check_allcache']));
-    register_setting( 'cachepurger_options_group', 'cf_check_allcache' );
+        add_option( 'cf_check_postpage', $cf_check_postpage);
+        register_setting( 'cachepurger_options_group', 'cf_check_postpage' );
+
+        add_option( 'cf_check_httphttps', $cf_check_httphttps);
+        register_setting( 'cachepurger_options_group', 'cf_check_httphttps' );
+
+        add_option( 'cf_check_allcache', $cf_check_allcache);
+        register_setting( 'cachepurger_options_group', 'cf_check_allcache' );
+    }
 }
 
-function cachepurger_register_options_page() {
-    add_options_page('CloudFlare CachePurger', 'CF CachePurger', 'manage_options', 'cf-cachepurger', 'cachepurger_options_page');
+function ccfw_cachepurger_register_options_page() {
+    add_options_page('CloudFlare CachePurger', 'CF CachePurger', 'manage_options', 'cf-cachepurger', 'ccfw_cachepurger_options_page');
 }
 
 
 // triggers
-add_action( 'admin_init', 'cachepurger_register_settings' );
-add_action( 'admin_menu', 'cachepurger_register_options_page' );
-add_action( 'save_post', 'clearCache' );
-add_action( 'admin_notices',  'admin_notices' );
-add_filter( 'plugin_action_links_'.plugin_basename(__FILE__), 'salcode_add_plugin_page_settings_link' );
+add_action( 'admin_init', 'ccfw_cachepurger_register_settings' );
+add_action( 'admin_menu', 'ccfw_cachepurger_register_options_page' );
+add_action( 'save_post', 'ccfw_clearCache' );
+add_action( 'admin_notices',  'ccfw_admin_notices' );
+add_filter( 'plugin_action_links_'.plugin_basename(__FILE__), 'ccfw_add_plugin_page_settings_link' );
+register_activation_hook( __FILE__, 'ccfw_install' );
+register_deactivation_hook( __FILE__, 'ccfw_uninstall' );
 
-
-function salcode_add_plugin_page_settings_link( $links ) {
+function ccfw_add_plugin_page_settings_link( $links ) {
     $links[] = '<a href="' . admin_url( 'options-general.php?page=cf-cachepurger' ) . '">' . __('Settings') . '</a>';
     return $links;
 }
 
-function admin_notices() {
+function ccfw_admin_notices() {
     $cf_key_value   = get_option('cf_key_value');
     $cf_email_value = get_option('cf_email_value');
     $screen 	= get_current_screen();
@@ -168,15 +224,20 @@ function admin_notices() {
 <?php
    }} 
 
-function cachepurger_options_page() { 
-// check if user has permission
+function ccfw_cachepurger_options_page() { 
 
-if (current_user_can('activate_plugins')==false && current_user_can('edit_theme_options')==false && current_user_can('manage_options')==false) { 
-    print('<div class="alert notice"><p><span style="color:red">Access Denied:</span> Unfortunately, your user does not have access to this plugin page. Please use an administrator account to make this changes</p></div>');
-} else {
+    global $wpdb;
+    global $ccfw_tablename_log;
+    
+    // get tablename
+    $table_name = $wpdb->prefix . $ccfw_tablename_log;
+    
+    // check if user has permission    
+    if (current_user_can('activate_plugins')==false && current_user_can('edit_theme_options')==false && current_user_can('manage_options')==false) { 
+        print('<div class="alert notice"><p><span style="color:red">Access Denied:</span> Unfortunately, your user does not have access to this plugin page. Please use an administrator account to make this changes</p></div>');
+    } else {
 ?>
 <div>
-   <?php screen_icon(); ?>
    <h2>CachePurger for Wordpress</h2>
    <form method="post" action="options.php">
       <?php settings_fields( 'cachepurger_options_group' ); ?>
@@ -206,7 +267,7 @@ if (current_user_can('activate_plugins')==false && current_user_can('edit_theme_
             <td style="width:100%">Clear both http / https</td>
          </tr>
          <tr valign="top">
-            <td scope="row"><input type="checkbox" name="cf_check_allcache" id="cf_check_allcache" onclick="allcache(this)" value="true" <?php if(get_option('cf_check_allcache')) echo 'checked'; ?>></td>
+            <td scope="row"><input type="checkbox" name="cf_check_allcache" id="cf_check_allcache" onclick="ccfw_allcache(this)" value="true" <?php if(get_option('cf_check_allcache')) echo 'checked'; ?>></td>
             <td>All cache <span style="color:red;font-size:10px">(take care)</span></td>
          </tr>
       </table>
@@ -216,33 +277,19 @@ if (current_user_can('activate_plugins')==false && current_user_can('edit_theme_
       </div>
       <br>Purge Log:<br>
       <textarea style="width:90%;max-width:1200px;height:120px;font-size:12px" readonly><?php
-         if(file_exists(dirname ( __FILE__ ) . "/purge.log")) {
-         $lines=array();
-         $fp = fopen(dirname ( __FILE__ ) . "/purge.log", "r");
-         while(!feof($fp))
-         {
-            $line = fgets($fp, 4096);
-            array_push($lines, $line);
-            if (count($lines)>16)
-                array_shift($lines);
-         }
-         fclose($fp);
-         $lines = array_reverse($lines);
-         foreach($lines as $l) {
-         	trim(print($l));
-         }
-         }
+        
+            $records = $wpdb->get_results("SELECT * FROM $table_name ORDER BY id DESC LIMIT 200");
+            foreach($records as $r) {
+               print($r->time . "\t" . $r->text . "\r\n");
+            }
            ?></textarea>
-      <?php if(file_exists(dirname ( __FILE__ ) . "/purge.log")) { ?>
-      <br>
-      <span style="color:#999999;font-size:10px">(Log size: <?php  echo human_filesize(filesize(dirname ( __FILE__ ) . "/purge.log")); ?> )</span>
-      <?php } ?>
+
       <?php  submit_button(); ?>
    </form>
    <br>Developed by LuizBossoi - luizbossoi.com.br
 </div>
 <script>
-function allcache(sender) {
+function ccfw_allcache(sender) {
    chk = sender.checked;
    document.getElementById("cf_check_homepage").checked = chk;
    document.getElementById("cf_check_postpage").checked = chk;
