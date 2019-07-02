@@ -1,6 +1,14 @@
 # cachepurger-for-wordpress
 This plugin purges your Cloudflare cache when you save or edit a post.
 
+# Oficial plugin page
+You can install this plugin by searching for "Cloudflare Cache Purger" in your Wordpress plugin store.
+This plugin is free and OpenSouce
+
+You can also download the ZIP release and unzip on your wp-content/plugins/ folder to manually install.
+
+Plugin page: https://wordpress.org/plugins/cf-cachepurger/
+
 # Why should I use this plugin?
 If you use CloudFlare in your Wordpress website and you want to boost it's performance, you need to set your Page Rule to "Cache Everything". Unfortunately, this will cache your whole website, homepage, post page and everytime you post/edit new content you'll have to manually purge your cache on CloudFlare's dashboard.
 
