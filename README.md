@@ -1,7 +1,7 @@
 # cachepurger-for-wordpress
 This plugin purges your Cloudflare cache when you save or edit a post.
 
-# Oficial plugin page
+# Official plugin page
 You can install this plugin by searching for "Cloudflare Cache Purger" in your Wordpress plugin store.
 This plugin is free and OpenSouce
 
