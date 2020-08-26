@@ -2,8 +2,8 @@
 Contributors: e0xbr
 Tags: cloudflare, speed, cache, purge
 Requires at least: 3.4
-Tested up to: 5.2.2
-Stable tag: 5.2.2
+Tested up to: 5.5
+Stable tag: 5.5
 License: GPLv2 or later
 Requires PHP: 5.2.4
 

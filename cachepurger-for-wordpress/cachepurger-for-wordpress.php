@@ -126,6 +126,7 @@ function ccfw_clearCache($post_id) {
     $cf_check_postpage  = get_option('cf_check_postpage');
     $cf_check_httphttps = get_option('cf_check_httphttps');
     $cf_check_allcache  = get_option('cf_check_allcache');
+    $cf_textarea_custom = get_option('cf_textarea_custompaths');
     
     $arr_url	= parse_url($post_url);
     $domain		= str_replace('www.','', $arr_url['host']);
@@ -133,6 +134,17 @@ function ccfw_clearCache($post_id) {
     if($cf_check_homepage=='true' || $cf_check_allcache=='true') { array_push($purge_paths, get_site_url() . "/"); array_push($purge_paths, get_site_url()); }
     if($cf_check_postpage=='true' || $cf_check_allcache=='true') { array_push($purge_paths, $post_url); array_push($purge_paths, $post_url . "/"); }
     
+    // custom purge paths
+    if(strlen($cf_textarea_custom)>0) {
+        $arr_paths = explode(PHP_EOL, $cf_textarea_custom);
+        foreach($arr_paths as $cp) {
+            if(substr($cp,0,1)!=="/") $cp = "/$cp";
+            $cp = trim(preg_replace('/\s\s+/', ' ', $cp));
+            array_push($purge_paths, get_site_url() . $cp); 
+        }
+    }
+
+    // SSL purge
     if($cf_check_httphttps=='true' || $cf_check_allcache=='true') {
        foreach($purge_paths as $ppk=>$ppv) {
            if(substr($ppv, 0, 5)=='https') {
@@ -142,7 +154,7 @@ function ccfw_clearCache($post_id) {
            }
        }
     }
-    
+
     if(strlen($cf_key_value)>0 && strlen($cf_email_value)>0) {
         ccfw_addLog("Post edited/added, need to purge cache...");
         $zone_id = ccfw_getZoneID($domain);
@@ -170,6 +182,8 @@ function ccfw_cachepurger_register_settings() {
         $cf_check_postpage  = isset($_POST['cf_check_postpage'])    ? sanitize_text_field($_POST['cf_check_postpage'])  : null;
         $cf_check_httphttps = isset($_POST['cf_check_httphttps'])   ? sanitize_text_field($_POST['cf_check_httphttps']) : null;
         $cf_check_allcache  = isset($_POST['cf_check_allcache'])    ? sanitize_text_field($_POST['cf_check_allcache'])  : null;
+        $cf_textarea_custom = isset($_POST['cf_textarea_custom'])   ? sanitize_text_field($_POST['cf_textarea_custom'])  : null;
+
         
         add_option( 'cf_key_value', $cf_key_value);
         register_setting( 'cachepurger_options_group', 'cf_key_value' );
@@ -189,6 +203,9 @@ function ccfw_cachepurger_register_settings() {
 
         add_option( 'cf_check_allcache', $cf_check_allcache);
         register_setting( 'cachepurger_options_group', 'cf_check_allcache' );
+
+        add_option( 'cf_textarea_custompaths', $cf_textarea_custom);
+        register_setting( 'cachepurger_options_group', 'cf_textarea_custompaths' );
     }
 }
 
@@ -270,6 +287,17 @@ function ccfw_cachepurger_options_page() {
             <td scope="row"><input type="checkbox" name="cf_check_allcache" id="cf_check_allcache" onclick="ccfw_allcache(this)" value="true" <?php if(get_option('cf_check_allcache')) echo 'checked'; ?>></td>
             <td>All cache <span style="color:red;font-size:10px">(take care)</span></td>
          </tr>
+         <tr valign="top">
+            <td colspan="2"><br>Custom paths:</td>
+         </tr>
+         <tr valign="top">
+            <td scope="row"></td>
+            <td>
+                <textarea style="width:90%;max-width:1200px;height:120px;font-size:12px" placeholder="Example:&#10;/sitemap.xml&#10;/mydir/myfile.xml" name="cf_textarea_custompaths"><?php if(get_option('cf_textarea_custompaths')) echo get_option('cf_textarea_custompaths'); ?></textarea>
+                <br>
+                <span style="font-size:10px">One path by line, full path must be provided, without your website's domain (eg: /sitemap.xml OR /mydir/mypath). Wildcard not allowed</span>
+            </td>
+         </tr>         
       </table>
       <br>
       <div class="alert notice">
