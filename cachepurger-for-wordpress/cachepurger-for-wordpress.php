@@ -46,6 +46,18 @@ function ccfw_uninstall() {
     delete_option("ccfw_db_version");
 }
 
+function ccfw_checkToken($token) {
+    $result = wp_remote_get("https://api.cloudflare.com/client/v4/user/tokens/verify", 
+        array(
+            'headers' => array(
+                            'Authorization'  => "Bearer " . $token,
+                            'Content-Type'  => 'application/json'
+                        )
+        )
+    );
+    return $result;
+}
+
 function ccfw_purgeCache($path, $zone_id) {
     $cf_check_allcache  = get_option('cf_check_allcache');
     if($cf_check_allcache=='true') {
@@ -81,7 +93,7 @@ function ccfw_purgeCache($path, $zone_id) {
     }
 
     $arr_result = json_decode($result['body'], true);
-    if(isset($arr_result['success'])) ccfw_addLog('Cache purged'); else ccfw_addLog('ERROR: ' . print_r($arr_result['errors'], true));
+    if(isset($arr_result['success'])) ccfw_addLog('Cache purged'); else ccfw_addLog('ERROR: ' . print_r($arr_result['errors']));
 }
 
 function ccfw_getZoneID($domain) {
@@ -108,14 +120,18 @@ function ccfw_getZoneID($domain) {
         );
     }
 
-    $arr_result = json_decode($result['body'], true);
-    if(isset($arr_result['success'])) {
-        foreach($arr_result['result'] as $r) {
-            if($r['name']==$domain) {
-                return $r['id'];
+    if(!is_wp_error($result)) {
+        $arr_result = json_decode($result['body'], true);
+        if(isset($arr_result['success'])) {
+            foreach($arr_result['result'] as $r) {
+                if($r['name']==$domain) {
+                    return $r['id'];
+                }
             }
+        return false;
         }
-       return false;
+    } else {
+        return false;
     }
 
 return false;
@@ -225,15 +241,20 @@ function ccfw_cachepurger_register_settings() {
         $cf_key_value       = isset($_POST['cf_key_value'])         ? sanitize_text_field($_POST['cf_key_value'])       : null;
         $cf_email_value     = isset($_POST['cf_email_value'])       ? sanitize_text_field($_POST['cf_email_value'])     : null;
         $cf_token_value     = isset($_POST['cf_token_value'])       ? sanitize_text_field($_POST['cf_token_value'])     : null;
-        $cf_zone_id     = isset($_POST['cf_zone_id'])       ? sanitize_text_field($_POST['cf_zone_id'])     : null;        
+        $cf_zone_id          = isset($_POST['cf_zone_id'])       ? sanitize_text_field($_POST['cf_zone_id'])     : null;        
         $cf_check_homepage  = isset($_POST['cf_check_homepage'])    ? sanitize_text_field($_POST['cf_check_homepage'])  : null;
         $cf_check_postpage  = isset($_POST['cf_check_postpage'])    ? sanitize_text_field($_POST['cf_check_postpage'])  : null;
         $cf_check_postcategories  = isset($_POST['cf_check_postcategories'])    ? sanitize_text_field($_POST['cf_check_postcategories'])  : null;
         $cf_check_httphttps = isset($_POST['cf_check_httphttps'])   ? sanitize_text_field($_POST['cf_check_httphttps']) : null;
         $cf_check_allcache  = isset($_POST['cf_check_allcache'])    ? sanitize_text_field($_POST['cf_check_allcache'])  : null;
         $cf_textarea_custom = isset($_POST['cf_textarea_custom'])   ? sanitize_text_field($_POST['cf_textarea_custom'])  : null;
-
         
+
+        $checkToken = ccfw_checkToken($cf_token_value);
+        if(wp_remote_retrieve_response_code($checkToken)!=200) {
+            add_settings_error( 'save', '401', '<b>Error:</b> Your API Token could not be validated. Please check and try again.', $type = 'error' );
+        }
+
         add_option( 'cf_key_value', $cf_key_value);
         register_setting( 'cachepurger_options_group', 'cf_key_value' );
 

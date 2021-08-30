@@ -50,8 +50,8 @@ Also, if necessary you can download this plugin logs inside wp-content/plugins/c
 # What do I need to run this plugin properly?
   - PHP 5.6+
   - Server enabled cURL (to send purge requests to CloudFlare)
-  - fopen enabled (to log and read debug content)
   - Website enabled and working on CloudFlare
+  - CloudFlare API Token with Purge Permissions (Wordpress permission will fit)
 
 # Is it enough?
 Yes, probably it's enough :)
@@ -59,9 +59,20 @@ Yes, probably it's enough :)
 # Bugs, issues, questions
 If you have any question or issue related to this plugin, please fell free to contribute reporting it.
 
+# How to create a API Token on CloudFlare
+Login into CloudFlare account, click on your profile icon (top right), "My Profile".
+Click on "API Tokens" and create a new one with you desired permissions. If you are not sure about which permission, just select "Wordpress".
+
 # Docker - test it
 You can use docker-run.sh to start a Wordpress + MySQL container on your computer to test this plugin.
 Just remember - if you're planning to test the purge action, will be not able to do that because of localhost "domain".
 Server starts at : http://localhost:80000
 
 From: https://github.com/luizbossoi/cachepurger-for-wordpress
+
+# Contributors
+  - @negrusti
+  Replaced email/password auth by API Token+ZoneID, cache purge fixes and others (v1.1 release)
+
+  - @razorfrog 
+  Reported issues with +200 domains on CF (issue #3), issue on URL (cf-cachepurger)
