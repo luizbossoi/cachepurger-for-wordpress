@@ -57,29 +57,54 @@ function ccfw_purgeCache($path, $zone_id) {
         ccfw_addLog('Paths: ' . implode(', ',$path));  
     } 
 
-    $result = wp_remote_post("https://api.cloudflare.com/client/v4/zones/$zone_id/purge_cache", 
-           array(
-                   'body'    => json_encode($data),
-                   'headers' => array(
-                                   'X-Auth-Email'  => get_option('cf_email_value'),
-                                   'X-Auth-Key'    => get_option('cf_key_value'),
-                                   'Content-Type'  => 'application/json'
-                               )
-    ));
+    if (get_option('cf_token_value')) {
+        $result = wp_remote_post("https://api.cloudflare.com/client/v4/zones/$zone_id/purge_cache", 
+                array(
+                    'body'    => json_encode($data),
+                    'headers' => array(
+                                    'Authorization'  => "Bearer " . get_option('cf_token_value'),
+                                    'Content-Type'  => 'application/json'
+                                )
+                )
+        );
+    } else {
+        $result = wp_remote_post("https://api.cloudflare.com/client/v4/zones/$zone_id/purge_cache", 
+                array(
+                    'body'    => json_encode($data),
+                    'headers' => array(
+                                    'X-Auth-Email'  => get_option('cf_email_value'),
+                                    'X-Auth-Key'    => get_option('cf_key_value'),
+                                    'Content-Type'  => 'application/json'
+                                )
+                )
+        );
+    }
 
     $arr_result = json_decode($result['body'], true);
     if(isset($arr_result['success'])) ccfw_addLog('Cache purged'); else ccfw_addLog('ERROR: ' . print_r($arr_result['errors'], true));
 }
 
 function ccfw_getZoneID($domain) {
-    $result = wp_remote_get("https://api.cloudflare.com/client/v4/zones", 
-           array(
-                   'headers' => array(
-                                   'X-Auth-Email'  => get_option('cf_email_value'),
-                                   'X-Auth-Key'    => get_option('cf_key_value'),
-                                   'Content-Type'  => 'application/json'
-                               )
-   ));
+    if (get_option('cf_token_value')) {
+        $result = wp_remote_get("https://api.cloudflare.com/client/v4/zones", 
+                array(
+                    'headers' => array(
+                                    'Authorization'  => "Bearer " . get_option('cf_token_value'),
+                                    'Content-Type'  => 'application/json'
+                                )
+                )
+        );
+    } else {
+        $result = wp_remote_get("https://api.cloudflare.com/client/v4/zones", 
+                array(
+                    'headers' => array(
+                                    'X-Auth-Email'  => get_option('cf_email_value'),
+                                    'X-Auth-Key'    => get_option('cf_key_value'),
+                                    'Content-Type'  => 'application/json'
+                                )
+                )
+        );
+    }
 
     $arr_result = json_decode($result['body'], true);
     if(isset($arr_result['success'])) {
@@ -120,10 +145,13 @@ function ccfw_clearCache($post_id) {
     // cloudflare settings
     $cf_key_value       = get_option('cf_key_value');
     $cf_email_value     = get_option('cf_email_value');
+    $cf_token_value     = get_option('cf_token_value');
+    $cf_zone_id         = get_option('cf_zone_id');        
     
     // cache settings
     $cf_check_homepage  = get_option('cf_check_homepage');
     $cf_check_postpage  = get_option('cf_check_postpage');
+    $cf_check_postcategories = get_option('cf_check_postcategories');
     $cf_check_httphttps = get_option('cf_check_httphttps');
     $cf_check_allcache  = get_option('cf_check_allcache');
     $cf_textarea_custom = get_option('cf_textarea_custompaths');
@@ -133,7 +161,22 @@ function ccfw_clearCache($post_id) {
 
     if($cf_check_homepage=='true' || $cf_check_allcache=='true') { array_push($purge_paths, get_site_url() . "/"); array_push($purge_paths, get_site_url()); }
     if($cf_check_postpage=='true' || $cf_check_allcache=='true') { array_push($purge_paths, $post_url); array_push($purge_paths, $post_url . "/"); }
-    
+    if($cf_check_postcategories=='true' || $cf_check_allcache=='true') {
+        $term_list = wp_get_post_terms($post_id, array('category', 'post_tag'));    
+        foreach($term_list as $term) {
+            $term_url = get_term_link($term);            
+            $term_url = str_replace("/./", "/", $term_url);
+            array_push($purge_paths, $term_url);
+
+            $categories = get_ancestors($term->term_id, 'category');
+            foreach($categories as $category) {
+                $category_url = str_replace("/./", "/", get_category_link($category));
+                array_push($purge_paths, $category_url);
+            }
+
+        }
+    }
+
     // custom purge paths
     if(strlen($cf_textarea_custom)>0) {
         $arr_paths = explode(PHP_EOL, $cf_textarea_custom);
@@ -155,9 +198,10 @@ function ccfw_clearCache($post_id) {
        }
     }
 
-    if(strlen($cf_key_value)>0 && strlen($cf_email_value)>0) {
+    if((strlen($cf_key_value)>0 && strlen($cf_email_value)>0) || strlen($cf_token_value)>0) {
         ccfw_addLog("Post edited/added, need to purge cache...");
-        $zone_id = ccfw_getZoneID($domain);
+        
+        $zone_id = get_option('cf_zone_id') ? get_option('cf_zone_id') : ccfw_getZoneID($domain);
         if($zone_id==false) {
             ccfw_addLog("ERROR: Zone domain not found: $domain");
         } else {
@@ -178,8 +222,11 @@ function ccfw_cachepurger_register_settings() {
         
         $cf_key_value       = isset($_POST['cf_key_value'])         ? sanitize_text_field($_POST['cf_key_value'])       : null;
         $cf_email_value     = isset($_POST['cf_email_value'])       ? sanitize_text_field($_POST['cf_email_value'])     : null;
+        $cf_token_value     = isset($_POST['cf_token_value'])       ? sanitize_text_field($_POST['cf_token_value'])     : null;
+        $cf_zone_id     = isset($_POST['cf_zone_id'])       ? sanitize_text_field($_POST['cf_zone_id'])     : null;        
         $cf_check_homepage  = isset($_POST['cf_check_homepage'])    ? sanitize_text_field($_POST['cf_check_homepage'])  : null;
         $cf_check_postpage  = isset($_POST['cf_check_postpage'])    ? sanitize_text_field($_POST['cf_check_postpage'])  : null;
+        $cf_check_postcategories  = isset($_POST['cf_check_postcategories'])    ? sanitize_text_field($_POST['cf_check_postcategories'])  : null;
         $cf_check_httphttps = isset($_POST['cf_check_httphttps'])   ? sanitize_text_field($_POST['cf_check_httphttps']) : null;
         $cf_check_allcache  = isset($_POST['cf_check_allcache'])    ? sanitize_text_field($_POST['cf_check_allcache'])  : null;
         $cf_textarea_custom = isset($_POST['cf_textarea_custom'])   ? sanitize_text_field($_POST['cf_textarea_custom'])  : null;
@@ -191,9 +238,18 @@ function ccfw_cachepurger_register_settings() {
         add_option( 'cf_email_value', $cf_email_value);
         register_setting( 'cachepurger_options_group', 'cf_email_value' );
 
+        add_option( 'cf_token_value', $cf_token_value);
+        register_setting( 'cachepurger_options_group', 'cf_token_value' );
+
+        add_option( 'cf_zone_id', $cf_zone_id);
+        register_setting( 'cachepurger_options_group', 'cf_zone_id' );
+
         // save caching settings
         add_option( 'cf_check_homepage', $cf_check_homepage);
         register_setting( 'cachepurger_options_group', 'cf_check_homepage' );
+
+        add_option( 'cf_check_postcategories', $cf_check_postcategories);
+        register_setting( 'cachepurger_options_group', 'cf_check_postcategories' );
 
         add_option( 'cf_check_postpage', $cf_check_postpage);
         register_setting( 'cachepurger_options_group', 'cf_check_postpage' );
@@ -217,7 +273,7 @@ function ccfw_cachepurger_register_options_page() {
 // triggers
 add_action( 'admin_init', 'ccfw_cachepurger_register_settings' );
 add_action( 'admin_menu', 'ccfw_cachepurger_register_options_page' );
-add_action( 'save_post', 'ccfw_clearCache' );
+add_action( 'rest_after_insert_post', 'ccfw_clearCache' );
 add_action( 'admin_notices',  'ccfw_admin_notices' );
 add_filter( 'plugin_action_links_'.plugin_basename(__FILE__), 'ccfw_add_plugin_page_settings_link' );
 register_activation_hook( __FILE__, 'ccfw_install' );
@@ -231,12 +287,13 @@ function ccfw_add_plugin_page_settings_link( $links ) {
 function ccfw_admin_notices() {
     $cf_key_value   = get_option('cf_key_value');
     $cf_email_value = get_option('cf_email_value');
+    $cf_token_value = get_option('cf_token_value');
     $screen 	= get_current_screen();
     
-    if ( ($screen->parent_base == 'edit' || $screen->parent_base == 'plugins' ) && (strlen($cf_key_value)<=0 || strlen($cf_email_value)<=0) ) {
+    if ( ($screen->parent_base == 'edit' || $screen->parent_base == 'plugins' ) && ((strlen($cf_key_value)<=0 || strlen($cf_email_value)<=0) && strlen($cf_token_value)<=0) ) {
 ?>
 <div class="error notice">
-   <p>CachePurger for Wordpress is not configured properly, new posts or post updates will not be cleared from cache, please <a href="options-general.php?page=cachepurger">click here</a> to fix this issue.</p>
+   <p>CachePurger for Wordpress is not configured properly, new posts or post updates will not be cleared from cache, please <a href="options-general.php?page=cf-cachepurger">click here</a> to fix this issue.</p>
 </div>
 <?php
    }} 
@@ -260,15 +317,25 @@ function ccfw_cachepurger_options_page() {
       <?php settings_fields( 'cachepurger_options_group' ); ?>
       <p>Inform your CloudFlare's API key and account holder's e-mail below to make cache purge runs automatically when a new post is saved (new post / post edit)</p>
       <table style="width:40%;max-width:650px;min-width:550px">
+         <?php if (get_option('cf_key_value') && !get_option('cf_token_value')) { ?>
          <tr valign="top">
-            <th scope="row">E-mail Address:</th>
-            <td><input type="text" id="cf_email_value" name="cf_email_value" value="<?php echo get_option('cf_email_value'); ?>" style="width:100%;" required /></td>
+            <th scope="row">E-mail Address (legacy):</th>
+            <td><input type="text" id="cf_email_value" name="cf_email_value" value="<?php echo get_option('cf_email_value'); ?>" style="width:100%;" /></td>
          </tr>
          <tr valign="top">
-            <th scope="row">Global API Key:</th>
-            <td><input type="text" id="cf_key_value" name="cf_key_value" value="<?php echo get_option('cf_key_value'); ?>" style="width:100%;" required /></td>
+            <th scope="row">Global API Key (legacy):</th>
+            <td><input type="text" id="cf_key_value" name="cf_key_value" value="<?php echo get_option('cf_key_value'); ?>" style="width:100%;" /></td>
          </tr>
-      </table>
+         <?php } ?>
+         <tr valign="top">
+            <th scope="row">API Token:</th>
+            <td><input type="text" id="cf_token_value" name="cf_token_value" value="<?php echo get_option('cf_token_value'); ?>" style="width:100%;" /></td>
+         </tr>
+         <tr valign="top">
+            <th scope="row">Zone ID:</th>
+            <td><input type="text" id="cf_zone_id" name="cf_zone_id" value="<?php echo get_option('cf_zone_id'); ?>" style="width:100%;" /></td>
+         </tr>
+        </table>
       <p>Content to be cleared:</p>
       <table style="width:40%;max-width:650px;min-width:550px;margin-left:30px;">
          <tr valign="top">
@@ -278,6 +345,10 @@ function ccfw_cachepurger_options_page() {
          <tr valign="top">
             <td scope="row" style="width:40px"><input type="checkbox" name="cf_check_postpage" id="cf_check_postpage" value="true" <?php if(get_option('cf_check_postpage')) echo 'checked'; ?>></td>
             <td style="width:100%">Post page <span style="color:#999999;font-size:10px">(recommended)</span></td>
+         </tr>
+         <tr valign="top">
+            <td scope="row" style="width:40px"><input type="checkbox" name="cf_check_postcategories" id="cf_check_postcategories" value="true" <?php if(get_option('cf_check_postcategories')) echo 'checked'; ?>></td>
+            <td style="width:100%">Post categories <span style="color:#999999;font-size:10px">(recommended)</span></td>
          </tr>
          <tr valign="top">
             <td scope="row" style="width:40px"><input type="checkbox" name="cf_check_httphttps" id="cf_check_httphttps" value="true" <?php if(get_option('cf_check_httphttps')) echo 'checked'; ?>></td>
@@ -321,6 +392,7 @@ function ccfw_allcache(sender) {
    chk = sender.checked;
    document.getElementById("cf_check_homepage").checked = chk;
    document.getElementById("cf_check_postpage").checked = chk;
+   document.getElementById("cf_check_postcategories").checked = chk;
    document.getElementById("cf_check_httphttps").checked = chk;
 }
 </script>
