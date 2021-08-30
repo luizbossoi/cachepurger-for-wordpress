@@ -85,8 +85,10 @@ function ccfw_purgeCache($path, $zone_id) {
 }
 
 function ccfw_getZoneID($domain) {
+    $limit_per_page = 200;
+
     if (get_option('cf_token_value')) {
-        $result = wp_remote_get("https://api.cloudflare.com/client/v4/zones", 
+        $result = wp_remote_get("https://api.cloudflare.com/client/v4/zones?per_page=$limit_per_page", 
                 array(
                     'headers' => array(
                                     'Authorization'  => "Bearer " . get_option('cf_token_value'),
@@ -95,7 +97,7 @@ function ccfw_getZoneID($domain) {
                 )
         );
     } else {
-        $result = wp_remote_get("https://api.cloudflare.com/client/v4/zones", 
+        $result = wp_remote_get("https://api.cloudflare.com/client/v4/zones?per_page=$limit_per_page", 
                 array(
                     'headers' => array(
                                     'X-Auth-Email'  => get_option('cf_email_value'),
