@@ -3,7 +3,7 @@
    Plugin Name: CloudFlare Cache Purger for WordPress
    Description: CachePurger is a plugin for Wordpress websites running CloudFlare. It purges the cache in CloudFlare website using their API when a post is saved.
    Author: Luiz Bossoi
-   Version: 1.4
+   Version: 1.6
    Author URI: http://luizbossoi.com.br
    */
 
